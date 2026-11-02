@@ -1,0 +1,69 @@
+application:
+  subdomain: ghost
+  multi_instance: false
+  upstreams:
+    - location: /package-licenses/
+      backend: file:///lzcapp/pkg/content/licenses/
+    - location: /
+      backend: http://ghost:2368/
+
+services:
+  db:
+    image: docker.1ms.run/library/mysql:8.0
+    environment:
+      - |-
+        MYSQL_ROOT_PASSWORD={{ stable_secret "ghost_db_root" | replace "\r" "" | replace "\n" "" }}
+      - MYSQL_DATABASE=ghost
+      - MYSQL_USER=ghost
+      - |-
+        MYSQL_PASSWORD={{ stable_secret "ghost_db_password" | replace "\r" "" | replace "\n" "" }}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    binds:
+      - /lzcapp/var/mysql:/var/lib/mysql
+
+  ghost:
+    # upstream: library/ghost:6.73.0
+    image: docker.1ms.run/library/ghost:6.73.0
+    depends_on:
+      - db
+    environment:
+      - |-
+        url=https://{{ .S.AppDomain }}
+      - database__client=mysql
+      - database__connection__host=db
+      - database__connection__port=3306
+      - database__connection__database=ghost
+      - database__connection__user=ghost
+      - |-
+        database__connection__password={{ stable_secret "ghost_db_password" | replace "\r" "" | replace "\n" "" }}
+      - NODE_ENV=production
+      - TZ=Asia/Shanghai
+    binds:
+      - /lzcapp/var/content:/var/lib/ghost/content
+
+usage: |
+  Ghost 是专业的博客与 newsletter 发布平台：编辑器干净、排版好看，自带订阅者管理。
+
+  使用方法：
+  1. 打开应用，第一次进入会跳到 /ghost 的设置向导，填写站点标题、你的名字、邮箱和密码，创建管理员。
+  2. 进入后台（/ghost）后点"新建文章"开始写，编辑器是所见即所得的。
+  3. 在设置里可以配置主题、导航和订阅功能。
+
+  数据与安全：
+  - 数据库在 MySQL（/lzcapp/var/mysql），文章图片和主题在 /lzcapp/var/content。
+    卸载应用会一并删除，请定期备份。
+  - 数据库密码由平台稳定密钥生成，每个部署不同，不写成固定值。
+  - 本包不预置任何账号或默认口令；管理员账号由首次访问时的设置向导创建。
+  - 应用经懒猫入口鉴权访问。
+
+  说明：
+  - 本应用包含两个容器（Ghost + MySQL 8.0），启动顺序由依赖关系保证。
+  - 未配置邮件服务，订阅确认邮件、密码找回等依赖邮件的功能不可用。
+  - 未做真机验证：设置向导、后台登录、写文章、上传图片以及重启后持久化均未在设备上实测。
